@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>哲郡老師 X PaGamO 智慧出題器 - 遊戲化題庫製作工具</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 FontAwesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 引入 Google Fonts: Noto Sans TC & Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <!-- 引入 SheetJS 用於匯出 Excel (.xlsx) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- 引入 Mammoth.js 用於解析 Word (.docx) 檔案 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <!-- 引入 PDF.js 用於解析 PDF 檔案 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: #f0f7f4;
+            background-image: radial-gradient(#cbe4d8 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        
+        /* PaGamO 風格按鈕立體效果 */
+        .btn-pagamo {
+            transition: all 0.15s ease;
+            box-shadow: 0 4px 0 rgba(0, 0, 0, 0.15);
+        }
+        .btn-pagamo:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 rgba(0, 0, 0, 0.15);
+        }
+
+        /* 自訂捲軸 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        /* 六角形領地裝飾動畫 */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+        .animate-float {
+            animation: float 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col">
+
+    <!-- 頂部導覽列 -->
+    <header class="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white shadow-lg sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-white/20 p-2 rounded-xl backdrop-blur-sm animate-float">
+                    <i class="fa-solid fa-cubes text-2xl text-amber-300"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl font-black tracking-wide flex items-center gap-2">
+                        哲郡老師 X PaGamO 智慧出題器
+                        <span class="text-xs bg-amber-400 text-slate-900 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Pro</span>
+                    </h1>
+                    <p class="text-xs text-emerald-100 hidden sm:block">打造專屬遊戲化學習領地，支援 AI 智慧生成與一鍵匯出</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <button onclick="openApiKeyModal()" id="btn-api-key" class="btn-pagamo bg-emerald-800/40 hover:bg-emerald-800/60 text-white border border-emerald-400/30 font-bold px-3 py-2 rounded-xl text-sm flex items-center gap-1.5" title="部署至 GitHub 後請在此設定 Gemini API Key">
+                    <i class="fa-solid fa-key text-amber-300"></i>
+                    <span class="hidden md:inline">API 設定</span>
+                </button>
+                <button onclick="openPreviewModal()" class="btn-pagamo bg-amber-400 hover:bg-amber-300 text-slate-900 font-bold px-3 sm:px-4 py-2 rounded-xl text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-gamepad"></i>
+                    <span class="hidden sm:inline">模擬攻佔測驗</span>
+                    <span class="sm:hidden">試玩</span>
+                </button>
+                <div class="relative group">
+                    <button class="btn-pagamo bg-white text-emerald-700 hover:bg-emerald-50 font-bold px-3 sm:px-4 py-2 rounded-xl text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-file-export"></i>
+                        <span>匯出題庫</span>
+                        <i class="fa-solid fa-chevron-down text-xs"></i>
+                    </button>
+                    <!-- 匯出下拉選單 -->
+                    <div class="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 hidden group-hover:block z-50">
+                        <div class="px-4 py-1.5 text-xs font-bold text-slate-400 uppercase">選擇匯出格式</div>
+                        <button onclick="exportToExcel()" class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-3 transition">
+                            <i class="fa-solid fa-file-excel text-emerald-600 text-lg"></i>
+                            <div>
+                                <div class="font-bold">PaGamO 標準 Excel</div>
+                                <div class="text-xs text-slate-400">下載 .xlsx 匯入範本</div>
+                            </div>
+                        </button>
+                        <button onclick="exportToCSV()" class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-3 transition">
+                            <i class="fa-solid fa-file-csv text-teal-600 text-lg"></i>
+                            <div>
+                                <div class="font-bold">CSV 文字檔</div>
+                                <div class="text-xs text-slate-400">UTF-8 BOM 編碼防亂碼</div>
+                            </div>
+                        </button>
+                        <div class="border-t border-slate-100 my-1"></div>
+                        <button onclick="copyQuestionsText()" class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-3 transition">
+                            <i class="fa-regular fa-copy text-slate-500 text-lg"></i>
+                            <div>
+                                <div class="font-bold">複製純文字題庫</div>
+                                <div class="text-xs text-slate-400">方便貼上至文件或表單</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 提示訊息框 (取代 alert) -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- 主要內容區 -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- 左側欄：出題工具區 (佔 5 欄) -->
+        <div class="lg:col-span-5 space-y-6">
+            
+            <!-- 切換分頁：AI 智慧出題 vs 手動編輯 -->
+            <div class="bg-white rounded-2xl shadow-md border border-emerald-100 overflow-hidden">
+                <div class="grid grid-cols-2 bg-slate-100 p-1.5 gap-1.5">
+                    <button id="tab-ai" onclick="switchMode('ai')" class="py-2.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition bg-white text-emerald-700 shadow-sm">
+                        <i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i>
+                        AI 智慧出題
+                    </button>
+                    <button id="tab-manual" onclick="switchMode('manual')" class="py-2.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition text-slate-600 hover:text-slate-900">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                        手動新增 / 編輯
+                    </button>
+                </div>
+
+                <!-- 面板 1：AI 智慧出題 -->
+                <div id="panel-ai" class="p-5 sm:p-6 space-y-4">
+                    <div class="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+                        <div class="bg-emerald-600 text-white p-2 rounded-lg shrink-0 mt-0.5">
+                            <i class="fa-solid fa-robot"></i>
+                        </div>
+                        <div class="text-sm text-emerald-900">
+                            <p class="font-bold mb-1">輸入學習主題或貼上課文段落</p>
+                            <p class="text-xs text-emerald-700 leading-relaxed">AI 將自動為您設計符合 PaGamO 規格的四選一單選題，並附上詳細的「詳解」幫助學生答錯時即時學習！</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-sm font-bold text-slate-700">出題主題 / 課文內容 <span class="text-rose-500">*</span></label>
+                            <label class="text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold px-2.5 py-1 rounded-lg cursor-pointer transition flex items-center gap-1.5 shadow-xs" title="支援 .txt, .md, .docx, .pdf">
+                                <i class="fa-solid fa-file-arrow-up"></i>
+                                <span>上傳教材檔案</span>
+                                <input type="file" id="ai-file-upload" accept=".txt,.md,.csv,.docx,.pdf" class="hidden" onchange="handleAITopicFileUpload(event)">
+                            </label>
+                        </div>
+                        <div id="ai-file-badge" class="hidden mb-2 bg-teal-50 border border-teal-200 text-teal-800 text-xs px-3 py-1.5 rounded-lg flex items-center justify-between">
+                            <div class="flex items-center gap-2 truncate">
+                                <i class="fa-solid fa-file-lines text-teal-600"></i>
+                                <span id="ai-file-name" class="font-medium truncate"></span>
+                            </div>
+                            <button type="button" onclick="clearAITopicFile()" class="text-teal-600 hover:text-rose-600 ml-2 shrink-0" title="清除檔案與內容">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <textarea id="ai-topic" rows="4" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition" placeholder="例如：國小五年級自然科學「太陽系八大行星」、台灣歷史「荷西時期」，或點擊右上角「上傳教材檔案」自動擷取課文..."></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1.5">生成題數</label>
+                            <select id="ai-count" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <option value="3">3 題 (快速體驗)</option>
+                                <option value="5" selected>5 題 (標準練習)</option>
+                                <option value="8">8 題 (進階挑戰)</option>
+                                <option value="10">10 題 (完整單元)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1.5">適用年級 / 難度</label>
+                            <select id="ai-level" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <option value="國小低中年級 (基礎簡單)">國小低中年級 (簡單)</option>
+                                <option value="國小高年級 (適中)" selected>國小高年級 (適中)</option>
+                                <option value="國中程度 (進階理解)">國中程度 (進階)</option>
+                                <option value="高中以上 / 專業知識 (困難)">高中以上 (困難)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 flex items-center gap-2">
+                        <i class="fa-solid fa-circle-exclamation text-amber-500 shrink-0"></i>
+                        <span>AI 生成的題目需要教師人工審核，才能符合學生的學習程度與目標。</span>
+                    </p>
+
+                    <button id="btn-generate-ai" onclick="generateWithAI()" class="w-full btn-pagamo bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 text-base">
+                        <i class="fa-solid fa-sparkles"></i>
+                        <span>開始 AI 智慧生成題目</span>
+                    </button>
+                </div>
+
+                <!-- 面板 2：手動新增 / 編輯 -->
+                <div id="panel-manual" class="p-5 sm:p-6 space-y-4 hidden">
+                    <div class="flex items-center justify-between">
+                        <h3 id="form-title" class="font-bold text-slate-800 text-base flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                            新增單選題
+                        </h3>
+                        <button id="btn-cancel-edit" onclick="resetManualForm()" class="hidden text-xs text-slate-500 hover:text-rose-600 font-medium">
+                            <i class="fa-solid fa-xmark"></i> 取消編輯
+                        </button>
+                    </div>
+
+                    <input type="hidden" id="edit-id" value="">
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">題目敘述 <span class="text-rose-500">*</span></label>
+                        <textarea id="q-text" rows="3" class="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="請輸入題目內容..."></textarea>
+                    </div>
+
+                    <!-- 四個選項 -->
+                    <div class="space-y-2.5">
+                        <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider">選項設定 (請點選左側圓圈標記正解) <span class="text-rose-500">*</span></label>
+                        
+                        <!-- 選項 A -->
+                        <div class="flex items-center gap-2">
+                            <input type="radio" name="correct-opt" id="radio-0" value="0" checked class="w-5 h-5 text-emerald-600 focus:ring-emerald-500 cursor-pointer">
+                            <span class="w-7 h-7 rounded-lg bg-slate-100 font-bold text-slate-600 flex items-center justify-center text-xs shrink-0">A</span>
+                            <input type="text" id="opt-0" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="選項 A 內容">
+                        </div>
+
+                        <!-- 選項 B -->
+                        <div class="flex items-center gap-2">
+                            <input type="radio" name="correct-opt" id="radio-1" value="1" class="w-5 h-5 text-emerald-600 focus:ring-emerald-500 cursor-pointer">
+                            <span class="w-7 h-7 rounded-lg bg-slate-100 font-bold text-slate-600 flex items-center justify-center text-xs shrink-0">B</span>
+                            <input type="text" id="opt-1" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="選項 B 內容">
+                        </div>
+
+                        <!-- 選項 C -->
+                        <div class="flex items-center gap-2">
+                            <input type="radio" name="correct-opt" id="radio-2" value="2" class="w-5 h-5 text-emerald-600 focus:ring-emerald-500 cursor-pointer">
+                            <span class="w-7 h-7 rounded-lg bg-slate-100 font-bold text-slate-600 flex items-center justify-center text-xs shrink-0">C</span>
+                            <input type="text" id="opt-2" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="選項 C 內容 (選填)">
+                        </div>
+
+                        <!-- 選項 D -->
+                        <div class="flex items-center gap-2">
+                            <input type="radio" name="correct-opt" id="radio-3" value="3" class="w-5 h-5 text-emerald-600 focus:ring-emerald-500 cursor-pointer">
+                            <span class="w-7 h-7 rounded-lg bg-slate-100 font-bold text-slate-600 flex items-center justify-center text-xs shrink-0">D</span>
+                            <input type="text" id="opt-3" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="選項 D 內容 (選填)">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">題目詳解 (選填，強烈建議填寫)</label>
+                        <textarea id="q-explanation" rows="2" class="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="學生答錯時顯示的解析說明..."></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">科目 / 標籤</label>
+                            <input type="text" id="q-tag" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="例如：自然科學">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">難度等級</label>
+                            <select id="q-difficulty" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <option value="簡單">簡單 (1星)</option>
+                                <option value="中等" selected>中等 (2星)</option>
+                                <option value="困難">困難 (3星)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button onclick="saveManualQuestion()" id="btn-save-manual" class="w-full btn-pagamo bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>加入題庫列表</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 匯入範本說明卡片 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-circle-info text-teal-600"></i>
+                        PaGamO 批量匯入格式說明
+                    </h4>
+                    <label class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg cursor-pointer transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-import"></i> 匯入現有檔案
+                        <input type="file" id="import-file" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFileImport(event)">
+                    </label>
+                </div>
+                <p class="text-xs text-slate-500 leading-relaxed mb-3">
+                    匯出的 Excel 檔案包含標準欄位：<code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">題目</code>、<code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">選項A~D</code>、<code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">正確答案(1~4或A~D)</code> 與 <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">詳解</code>，可直接上傳至 PaGamO 教師後台建立作業。
+                </p>
+            </div>
+        </div>
+
+        <!-- 右側欄：題庫管理列表區 (佔 7 欄) -->
+        <div class="lg:col-span-7 flex flex-col">
+            <div class="bg-white rounded-2xl shadow-md border border-emerald-100 flex-grow flex flex-col overflow-hidden">
+                
+                <!-- 列表頂部工具列 -->
+                <div class="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-emerald-100 text-emerald-700 w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg" id="question-count-badge">
+                            0
+                        </div>
+                        <div>
+                            <h2 class="font-bold text-slate-800 text-base sm:text-lg">已建立題庫清單</h2>
+                            <p class="text-xs text-slate-500">資料自動儲存於瀏覽器，重新整理不會遺失</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="text" id="search-input" oninput="renderQuestions()" placeholder="搜尋題目..." class="pl-8 pr-3 py-1.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 w-36 sm:w-48">
+                        </div>
+                        <button onclick="confirmClearAll()" class="text-xs text-rose-600 hover:bg-rose-50 px-3 py-2 rounded-xl font-bold transition flex items-center gap-1" title="清空所有題目">
+                            <i class="fa-solid fa-trash-can"></i>
+                            <span class="hidden sm:inline">清空</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 題目列表容器 -->
+                <div id="questions-list" class="p-4 sm:p-5 space-y-4 overflow-y-auto max-h-[720px] flex-grow">
+                    <!-- 動態渲染題目卡片 -->
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <!-- 模擬攻佔測驗 Modal (PaGamO 遊戲化試玩) -->
+    <div id="preview-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border-4 border-emerald-500 transform transition-all">
+            <!-- 遊戲化頂部狀態列 -->
+            <div class="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-4 text-white flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="bg-amber-400 text-slate-900 w-9 h-9 rounded-xl flex items-center justify-center font-black shadow">
+                        <i class="fa-solid fa-flag"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-lg tracking-wide">領地攻佔模擬戰</h3>
+                        <p class="text-xs text-emerald-100" id="quiz-progress-text">第 1 題 / 共 5 題</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="bg-black/20 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1.5">
+                        <i class="fa-solid fa-bolt text-amber-300"></i>
+                        <span>能量: <span id="quiz-score">0</span></span>
+                    </div>
+                    <button onclick="closePreviewModal()" class="text-white/80 hover:text-white text-xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 測驗內容區 -->
+            <div id="quiz-body" class="p-6 sm:p-8">
+                <!-- 動態載入題目或結算畫面 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 自訂確認清空 Modal -->
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+            <div class="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-2xl mx-auto mb-4">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800 mb-2">確定要清空所有題目嗎？</h3>
+            <p class="text-sm text-slate-500 mb-6">此動作將刪除目前題庫中的所有題目，且無法復原。</p>
+            <div class="flex gap-3">
+                <button onclick="closeConfirmModal()" class="flex-1 py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition">取消</button>
+                <button onclick="executeClearAll()" class="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm transition">確定清空</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gemini API Key 設定 Modal (專為 GitHub Pages 外部部署設計) -->
+    <div id="apikey-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-key text-amber-500"></i>
+                    設定 Gemini API Key
+                </h3>
+                <button onclick="closeApiKeyModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed mb-4">
+                若您將此網頁上傳至 <strong>GitHub Pages</strong> 等外部網站使用，請填入您的免費 Google Gemini API Key 以啟用 AI 出題功能。金鑰僅會儲存在您目前的瀏覽器中，不會上傳至 GitHub。
+            </p>
+            <div class="mb-4">
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">您的 API Key</label>
+                <input type="password" id="input-gemini-key" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="AIzaSy...">
+                <div class="mt-2 text-right">
+                    <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-xs text-emerald-600 hover:text-emerald-700 font-bold underline">
+                        前往 Google AI Studio 免費申請金鑰 <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="clearApiKey()" class="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs transition">清除金鑰</button>
+                <button onclick="saveApiKey()" class="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition">儲存設定</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 狀態管理與預設範例題庫
+        // ==========================================
+        const STORAGE_KEY = 'pagamo_question_maker_v1';
+        const API_KEY_STORAGE = 'pagamo_gemini_api_key';
+        
+        // 預設展示題目，讓使用者一打開就能體驗
+        const defaultQuestions = [
+            {
+                id: 'demo-1',
+                question: '在太陽系八大行星中，體積最大且擁有著名「大紅斑」風暴的是哪一顆行星？',
+                options: ['土星 (Saturn)', '木星 (Jupiter)', '天王星 (Uranus)', '火星 (Mars)'],
+                answer: 1, // 0:A, 1:B, 2:C, 3:D
+                explanation: '木星是太陽系中體積與質量最大的行星，其大氣層中的「大紅斑」是一個持續存在數百年的巨大反氣旋風暴。',
+                tag: '自然科學',
+                difficulty: '簡單'
+            },
+            {
+                id: 'demo-2',
+                question: '台灣歷史上，荷蘭東印度公司主要以哪裡作為統治與貿易中心，並興建了熱蘭遮城？',
+                options: ['淡水', '雞籠 (基隆)', '大員 (台南安平)', '打狗 (高雄)'],
+                answer: 2,
+                explanation: '1624年荷蘭人來到台灣南部「大員」（今台南安平），興建熱蘭遮城（今安平古堡）作為統治中心。',
+                tag: '社會歷史',
+                difficulty: '中等'
+            }
+        ];
+
+        let questions = [];
+
+        // 初始化載入資料
+        function initApp() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                try {
+                    questions = JSON.parse(saved);
+                } catch (e) {
+                    questions = [...defaultQuestions];
+                }
+            } else {
+                questions = [...defaultQuestions];
+                saveToStorage();
+            }
+            updateApiKeyIndicator();
+            renderQuestions();
+        }
+
+        function openApiKeyModal() {
+            const savedKey = localStorage.getItem(API_KEY_STORAGE) || '';
+            document.getElementById('input-gemini-key').value = savedKey;
+            document.getElementById('apikey-modal').classList.remove('hidden');
+        }
+
+        function closeApiKeyModal() {
+            document.getElementById('apikey-modal').classList.add('hidden');
+        }
+
+        function saveApiKey() {
+            const key = document.getElementById('input-gemini-key').value.trim();
+            localStorage.setItem(API_KEY_STORAGE, key);
+            updateApiKeyIndicator();
+            closeApiKeyModal();
+            showToast(key ? '已儲存您的 Gemini API Key！' : '已清除自訂 API Key', 'success');
+        }
+
+        function clearApiKey() {
+            localStorage.removeItem(API_KEY_STORAGE);
+            document.getElementById('input-gemini-key').value = '';
+            updateApiKeyIndicator();
+            showToast('已清除 API Key', 'info');
+        }
+
+        function updateApiKeyIndicator() {
+            const savedKey = localStorage.getItem(API_KEY_STORAGE);
+            const btn = document.getElementById('btn-api-key');
+            if (savedKey) {
+                btn.classList.add('ring-2', 'ring-amber-300');
+            } else {
+                btn.classList.remove('ring-2', 'ring-amber-300');
+            }
+        }
+
+        function saveToStorage() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(questions));
+            updateBadge();
+        }
+
+        function updateBadge() {
+            document.getElementById('question-count-badge').textContent = questions.length;
+        }
+
+        // ==========================================
+        // 2. 介面切換與通知提示 (Toast)
+        // ==========================================
+        function switchMode(mode) {
+            const tabAi = document.getElementById('tab-ai');
+            const tabManual = document.getElementById('tab-manual');
+            const panelAi = document.getElementById('panel-ai');
+            const panelManual = document.getElementById('panel-manual');
+
+            if (mode === 'ai') {
+                tabAi.className = 'py-2.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition bg-white text-emerald-700 shadow-sm';
+                tabManual.className = 'py-2.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition text-slate-600 hover:text-slate-900';
+                panelAi.classList.remove('hidden');
+                panelManual.classList.add('hidden');
+            } else {
+                tabManual.className = 'py-2.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition bg-white text-emerald-700 shadow-sm';
+                tabAi.className = 'py-2.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition text-slate-600 hover:text-slate-900';
+                panelManual.classList.remove('hidden');
+                panelAi.classList.add('hidden');
+            }
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const styles = {
+                success: 'bg-emerald-600 text-white border-emerald-500',
+                error: 'bg-rose-600 text-white border-rose-500',
+                info: 'bg-slate-800 text-white border-slate-700'
+            };
+            const icons = {
+                success: 'fa-circle-check',
+                error: 'fa-circle-exclamation',
+                info: 'fa-circle-info'
+            };
+
+            toast.className = `${styles[type] || styles.info} border px-4 py-3 rounded-xl shadow-lg flex items-center gap-2.5 text-sm font-bold transform transition-all duration-300 translate-y-2 opacity-0 pointer-events-auto`;
+            toast.innerHTML = `<i class="fa-solid ${icons[type] || icons.info}"></i><span>${message}</span>`;
+            
+            container.appendChild(toast);
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3200);
+        }
+
+        // ==========================================
+        // 3. Gemini AI 智慧出題引擎
+        // ==========================================
+        async function handleAITopicFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const textarea = document.getElementById('ai-topic');
+            const badge = document.getElementById('ai-file-badge');
+            const fileNameEl = document.getElementById('ai-file-name');
+            const ext = file.name.split('.').pop().toLowerCase();
+
+            showToast(`正在讀取「${file.name}」...`, 'info');
+
+            try {
+                let extractedText = '';
+
+                if (['txt', 'md', 'csv'].includes(ext)) {
+                    extractedText = await file.text();
+                } else if (ext === 'docx') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = await mammoth.extractRawText({ arrayBuffer });
+                    extractedText = result.value;
+                } else if (ext === 'pdf') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    const textParts = [];
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        const pageText = content.items.map(item => item.str).join(' ');
+                        textParts.push(pageText);
+                    }
+                    extractedText = textParts.join('\n\n');
+                } else {
+                    showToast('不支援的檔案格式，請上傳 .txt, .md, .docx 或 .pdf', 'error');
+                    event.target.value = '';
+                    return;
+                }
+
+                extractedText = extractedText.trim();
+                if (!extractedText) {
+                    showToast('無法從檔案中擷取到文字內容（可能是純圖片掃描檔）', 'error');
+                } else {
+                    // 若原輸入框已有內容則附加在後方，否則直接填入
+                    textarea.value = textarea.value.trim() 
+                        ? `${textarea.value.trim()}\n\n--- 來自檔案：${file.name} ---\n${extractedText}`
+                        : extractedText;
+                    
+                    fileNameEl.textContent = file.name;
+                    badge.classList.remove('hidden');
+                    showToast(`已成功匯入「${file.name}」內容！`, 'success');
+                }
+            } catch (err) {
+                showToast('檔案解析失敗，請確認檔案未損壞或加密。', 'error');
+            } finally {
+                event.target.value = '';
+            }
+        }
+
+        function clearAITopicFile() {
+            document.getElementById('ai-file-badge').classList.add('hidden');
+            document.getElementById('ai-file-name').textContent = '';
+            document.getElementById('ai-topic').value = '';
+            showToast('已清除匯入的檔案與內容', 'info');
+        }
+
+        async function generateWithAI() {
+            const topic = document.getElementById('ai-topic').value.trim();
+            const count = parseInt(document.getElementById('ai-count').value, 10);
+            const level = document.getElementById('ai-level').value;
+
+            if (!topic) {
+                showToast('請先輸入出題主題或貼上課文內容！', 'error');
+                document.getElementById('ai-topic').focus();
+                return;
+            }
+
+            const btn = document.getElementById('btn-generate-ai');
+            const originalHTML = btn.innerHTML;
+            btn.disabled = true;
+            btn.classList.add('opacity-75', 'cursor-not-allowed');
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i><span>AI 正在精心設計 ${count} 道題目...</span>`;
+
+            const prompt = `你是一位專業的台灣中小學與大學教師，擅長設計 PaGamO 遊戲化學習平台的單選題。
+請根據以下主題或文章內容，設計 ${count} 題高品質的四選一單選題。
+對象與難度設定：${level}
+
+主題/內容：
+"""
+${topic}
+"""
+
+出題要求：
+1. 每題必須有清楚的題幹 (question)、4個具誘答力的選項 (options 陣列，長度必須為 4)、正確答案索引 (answer，0代表A，1代表B，2代表C，3代表D)、詳細的解題說明 (explanation)，以及適合的科目標籤 (tag) 與難度 (difficulty：簡單、中等、困難)。
+2. 選項內容請勿包含 "A."、"B." 等前綴字元，直接填寫選項文字即可。
+3. 語言請使用繁體中文（台灣慣用語）。`;
+
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "ARRAY",
+                        items: {
+                            type: "OBJECT",
+                            properties: {
+                                question: { type: "STRING" },
+                                options: {
+                                    type: "ARRAY",
+                                    items: { type: "STRING" }
+                                },
+                                answer: { type: "INTEGER" },
+                                explanation: { type: "STRING" },
+                                tag: { type: "STRING" },
+                                difficulty: { type: "STRING" }
+                            },
+                            required: ["question", "options", "answer", "explanation", "tag", "difficulty"]
+                        }
+                    }
+                }
+            };
+
+            const apiKey = localStorage.getItem(API_KEY_STORAGE) || ""; // 優先讀取使用者設定的金鑰，預覽環境則自動提供
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+            try {
+                const data = await fetchWithBackoff(apiUrl, payload);
+                const textResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (!textResponse) {
+                    throw new Error('AI 未回傳有效內容');
+                }
+
+                const generatedList = JSON.parse(textResponse);
+                
+                if (Array.isArray(generatedList) && generatedList.length > 0) {
+                    const formattedQuestions = generatedList.map((item, idx) => ({
+                        id: 'ai-' + Date.now() + '-' + idx,
+                        question: item.question || '未命名題目',
+                        options: Array.isArray(item.options) && item.options.length >= 2 
+                                 ? item.options.slice(0, 4) 
+                                 : ['選項A', '選項B', '選項C', '選項D'],
+                        answer: (typeof item.answer === 'number' && item.answer >= 0 && item.answer <= 3) ? item.answer : 0,
+                        explanation: item.explanation || '',
+                        tag: item.tag || 'AI 生成',
+                        difficulty: ['簡單', '中等', '困難'].includes(item.difficulty) ? item.difficulty : '中等'
+                    }));
+
+                    // 將新題目加到最前面
+                    questions = [...formattedQuestions, ...questions];
+                    saveToStorage();
+                    renderQuestions();
+                    showToast(`成功生成 ${formattedQuestions.length} 道 PaGamO 題目！`, 'success');
+                } else {
+                    throw new Error('生成的題目格式不正確');
+                }
+            } catch (error) {
+                const hasCustomKey = !!localStorage.getItem(API_KEY_STORAGE);
+                if (!hasCustomKey && window.location.hostname.includes('github.io')) {
+                    showToast('請先點擊右上角「API 設定」輸入您的 Gemini API Key！', 'error');
+                    openApiKeyModal();
+                } else {
+                    showToast('AI 出題時發生錯誤，請檢查 API Key 或稍後再試。', 'error');
+                }
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                btn.innerHTML = originalHTML;
+            }
+        }
+
+        // 指數退避重試機制
+        async function fetchWithBackoff(url, payload, maxRetries = 3) {
+            let delay = 1000;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (err) {
+                    if (i === maxRetries - 1) throw err;
+                    await new Promise(res => setTimeout(res, delay));
+                    delay *= 2;
+                }
+            }
+        }
+
+        // ==========================================
+        // 4. 手動新增與編輯功能
+        // ==========================================
+        function saveManualQuestion() {
+            const editId = document.getElementById('edit-id').value;
+            const qText = document.getElementById('q-text').value.trim();
+            const opts = [
+                document.getElementById('opt-0').value.trim(),
+                document.getElementById('opt-1').value.trim(),
+                document.getElementById('opt-2').value.trim(),
+                document.getElementById('opt-3').value.trim()
+            ];
+            const answerRadio = document.querySelector('input[name="correct-opt"]:checked');
+            const answerIndex = answerRadio ? parseInt(answerRadio.value, 10) : 0;
+            const explanation = document.getElementById('q-explanation').value.trim();
+            const tag = document.getElementById('q-tag').value.trim() || '一般題庫';
+            const difficulty = document.getElementById('q-difficulty').value;
+
+            if (!qText) {
+                showToast('請輸入題目敘述！', 'error');
+                return;
+            }
+            if (!opts[0] || !opts[1]) {
+                showToast('請至少填寫選項 A 與選項 B！', 'error');
+                return;
+            }
+            if (!opts[answerIndex]) {
+                showToast('您設定的正確答案選項內容為空，請檢查！', 'error');
+                return;
+            }
+
+            if (editId) {
+                // 更新現有題目
+                const idx = questions.findIndex(q => q.id === editId);
+                if (idx !== -1) {
+                    questions[idx] = {
+                        ...questions[idx],
+                        question: qText,
+                        options: opts,
+                        answer: answerIndex,
+                        explanation,
+                        tag,
+                        difficulty
+                    };
+                    showToast('題目已更新！', 'success');
+                }
+            } else {
+                // 新增題目
+                const newQuestion = {
+                    id: 'manual-' + Date.now(),
+                    question: qText,
+                    options: opts,
+                    answer: answerIndex,
+                    explanation,
+                    tag,
+                    difficulty
+                };
+                questions.unshift(newQuestion);
+                showToast('已成功加入題庫！', 'success');
+            }
+
+            saveToStorage();
+            renderQuestions();
+            resetManualForm();
+        }
+
+        function editQuestion(id) {
+            const q = questions.find(item => item.id === id);
+            if (!q) return;
+
+            switchMode('manual');
+            document.getElementById('edit-id').value = q.id;
+            document.getElementById('q-text').value = q.question;
+            for (let i = 0; i < 4; i++) {
+                document.getElementById(`opt-${i}`).value = q.options[i] || '';
+            }
+            const radio = document.getElementById(`radio-${q.answer}`);
+            if (radio) radio.checked = true;
+
+            document.getElementById('q-explanation').value = q.explanation || '';
+            document.getElementById('q-tag').value = q.tag || '';
+            document.getElementById('q-difficulty').value = q.difficulty || '中等';
+
+            document.getElementById('form-title').innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> 編輯題目`;
+            document.getElementById('btn-save-manual').innerHTML = `<i class="fa-solid fa-check"></i><span>儲存修改</span>`;
+            document.getElementById('btn-cancel-edit').classList.remove('hidden');
+            
+            // 捲動到表單頂部 (行動裝置體驗)
+            document.getElementById('panel-manual').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function resetManualForm() {
+            document.getElementById('edit-id').value = '';
+            document.getElementById('q-text').value = '';
+            for (let i = 0; i < 4; i++) {
+                document.getElementById(`opt-${i}`).value = '';
+            }
+            document.getElementById('radio-0').checked = true;
+            document.getElementById('q-explanation').value = '';
+            document.getElementById('q-tag').value = '';
+            document.getElementById('q-difficulty').value = '中等';
+
+            document.getElementById('form-title').innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> 新增單選題`;
+            document.getElementById('btn-save-manual').innerHTML = `<i class="fa-solid fa-plus"></i><span>加入題庫列表</span>`;
+            document.getElementById('btn-cancel-edit').classList.add('hidden');
+        }
+
+        function deleteQuestion(id) {
+            questions = questions.filter(q => q.id !== id);
+            if (document.getElementById('edit-id').value === id) {
+                resetManualForm();
+            }
+            saveToStorage();
+            renderQuestions();
+            showToast('已刪除該題目', 'info');
+        }
+
+        function confirmClearAll() {
+            if (questions.length === 0) {
+                showToast('目前題庫已經是空的囉！', 'info');
+                return;
+            }
+            document.getElementById('confirm-modal').classList.remove('hidden');
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').classList.add('hidden');
+        }
+
+        function executeClearAll() {
+            questions = [];
+            saveToStorage();
+            renderQuestions();
+            resetManualForm();
+            closeConfirmModal();
+            showToast('已清空所有題目', 'info');
+        }
+
+        // ==========================================
+        // 5. 渲染題目列表
+        // ==========================================
+        function renderQuestions() {
+            const listContainer = document.getElementById('questions-list');
+            const keyword = document.getElementById('search-input').value.trim().toLowerCase();
+            updateBadge();
+
+            const filtered = questions.filter(q => 
+                q.question.toLowerCase().includes(keyword) || 
+                (q.tag && q.tag.toLowerCase().includes(keyword)) ||
+                q.options.some(opt => opt && opt.toLowerCase().includes(keyword))
+            );
+
+            if (filtered.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-16 px-4">
+                        <div class="w-20 h-20 bg-emerald-50 text-emerald-400 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">
+                            <i class="fa-solid fa-map-location-dot"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-700 mb-1">尚未找到任何題目</h3>
+                        <p class="text-sm text-slate-500 max-w-sm mx-auto">
+                            ${keyword ? '請嘗試更換搜尋關鍵字，或清除搜尋條件。' : '使用左側的「AI 智慧出題」快速產生題庫，或手動新增您的第一道題目！'}
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            const optionLabels = ['A', 'B', 'C', 'D'];
+            const diffBadges = {
+                '簡單': 'bg-emerald-100 text-emerald-700',
+                '中等': 'bg-amber-100 text-amber-700',
+                '困難': 'bg-rose-100 text-rose-700'
+            };
+
+            listContainer.innerHTML = filtered.map((q, index) => {
+                const optionsHTML = q.options.map((opt, optIdx) => {
+                    if (!opt && optIdx >= 2) return ''; // 略過未填寫的 C/D 選項
+                    const isCorrect = optIdx === q.answer;
+                    return `
+                        <div class="flex items-center gap-2.5 p-2.5 rounded-xl border ${isCorrect ? 'bg-emerald-50/90 border-emerald-400 text-emerald-900 font-bold' : 'bg-slate-50 border-slate-200 text-slate-700'} text-sm">
+                            <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${isCorrect ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-300 text-slate-500'}">
+                                ${optionLabels[optIdx]}
+                            </span>
+                            <span class="flex-grow break-words">${escapeHTML(opt)}</span>
+                            ${isCorrect ? '<i class="fa-solid fa-circle-check text-emerald-600 shrink-0"></i>' : ''}
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="bg-white border border-slate-200 hover:border-emerald-300 rounded-2xl p-4 sm:p-5 shadow-xs transition group">
+                        <div class="flex items-start justify-between gap-3 mb-3">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="bg-slate-800 text-white text-xs font-black px-2.5 py-1 rounded-lg">Q${index + 1}</span>
+                                <span class="bg-teal-50 text-teal-700 border border-teal-200 text-xs font-bold px-2.5 py-0.5 rounded-lg">
+                                    <i class="fa-solid fa-tag mr-1 text-[10px]"></i>${escapeHTML(q.tag || '一般')}
+                                </span>
+                                <span class="${diffBadges[q.difficulty] || 'bg-slate-100 text-slate-600'} text-xs font-bold px-2.5 py-0.5 rounded-lg">
+                                    ${escapeHTML(q.difficulty || '中等')}
+                                </span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <button onclick="editQuestion('${q.id}')" class="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition" title="編輯題目">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                                <button onclick="deleteQuestion('${q.id}')" class="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" title="刪除題目">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <p class="font-bold text-slate-800 text-base mb-4 leading-relaxed">${escapeHTML(q.question)}</p>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
+                            ${optionsHTML}
+                        </div>
+
+                        ${q.explanation ? `
+                            <div class="mt-3 pt-3 border-t border-slate-100 flex items-start gap-2 text-xs text-slate-600 bg-amber-50/50 p-3 rounded-xl">
+                                <i class="fa-solid fa-lightbulb text-amber-500 mt-0.5 shrink-0"></i>
+                                <div><span class="font-bold text-slate-700">詳解：</span>${escapeHTML(q.explanation)}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, tag => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;'
+            }[tag]));
+        }
+
+        // ==========================================
+        // 6. PaGamO 模擬攻佔測驗 (互動試玩)
+        // ==========================================
+        let quizState = {
+            currentIndex: 0,
+            score: 0,
+            answered: false
+        };
+
+        function openPreviewModal() {
+            if (questions.length === 0) {
+                showToast('題庫目前沒有題目，請先新增或使用 AI 生成題目！', 'error');
+                return;
+            }
+            quizState = { currentIndex: 0, score: 0, answered: false };
+            document.getElementById('preview-modal').classList.remove('hidden');
+            renderQuizStep();
+        }
+
+        function closePreviewModal() {
+            document.getElementById('preview-modal').classList.add('hidden');
+        }
+
+        function renderQuizStep() {
+            const total = questions.length;
+            const current = quizState.currentIndex;
+            document.getElementById('quiz-score').textContent = quizState.score;
+
+            if (current >= total) {
+                // 結算畫面
+                document.getElementById('quiz-progress-text').textContent = '攻佔完成！';
+                const accuracy = Math.round((quizState.score / (total * 100)) * 100);
+                document.getElementById('quiz-body').innerHTML = `
+                    <div class="text-center py-6">
+                        <div class="w-24 h-24 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-4 shadow-inner">
+                            <i class="fa-solid fa-trophy"></i>
+                        </div>
+                        <h4 class="text-2xl font-black text-slate-800 mb-2">領地攻佔成功！</h4>
+                        <p class="text-slate-500 text-sm mb-6">您已完成所有題目的模擬測驗</p>
+                        
+                        <div class="grid grid-cols-2 gap-4 max-w-xs mx-auto mb-8">
+                            <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl">
+                                <div class="text-xs text-emerald-600 font-bold">獲得能量</div>
+                                <div class="text-2xl font-black text-emerald-700">${quizState.score}</div>
+                            </div>
+                            <div class="bg-amber-50 border border-amber-200 p-3 rounded-2xl">
+                                <div class="text-xs text-amber-600 font-bold">答對率</div>
+                                <div class="text-2xl font-black text-amber-700">${accuracy}%</div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-center gap-3">
+                            <button onclick="openPreviewModal()" class="btn-pagamo bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-xl text-sm">
+                                <i class="fa-solid fa-rotate-right mr-1"></i> 重新挑戰
+                            </button>
+                            <button onclick="closePreviewModal()" class="btn-pagamo bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-3 rounded-xl text-sm">
+                                返回編輯
+                            </button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const q = questions[current];
+            document.getElementById('quiz-progress-text').textContent = `第 ${current + 1} 題 / 共 ${total} 題`;
+            const labels = ['A', 'B', 'C', 'D'];
+
+            const optsHTML = q.options.map((opt, idx) => {
+                if (!opt && idx >= 2) return '';
+                return `
+                    <button onclick="handleQuizAnswer(${idx})" id="quiz-opt-${idx}" class="w-full text-left p-4 rounded-2xl border-2 border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition flex items-center gap-3 font-bold text-slate-700">
+                        <span class="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center font-black shrink-0">${labels[idx]}</span>
+                        <span class="flex-grow">${escapeHTML(opt)}</span>
+                    </button>
+                `;
+            }).join('');
+
+            document.getElementById('quiz-body').innerHTML = `
+                <div>
+                    <div class="inline-block bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full mb-3">
+                        ${escapeHTML(q.tag || '知識挑戰')}
+                    </div>
+                    <h4 class="text-lg sm:text-xl font-bold text-slate-800 mb-6 leading-relaxed">${escapeHTML(q.question)}</h4>
+                    
+                    <div class="space-y-3 mb-6">
+                        ${optsHTML}
+                    </div>
+
+                    <div id="quiz-feedback" class="hidden rounded-2xl p-4 mb-4 text-sm"></div>
+
+                    <div class="flex justify-end">
+                        <button id="btn-next-quiz" onclick="nextQuizStep()" class="hidden btn-pagamo bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-xl text-sm">
+                            下一題 <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleQuizAnswer(selectedIdx) {
+            if (quizState.answered) return;
+            quizState.answered = true;
+
+            const q = questions[quizState.currentIndex];
+            const isCorrect = selectedIdx === q.answer;
+            const feedbackEl = document.getElementById('quiz-feedback');
+            
+            // 鎖定所有按鈕並標示顏色
+            for (let i = 0; i < 4; i++) {
+                const btn = document.getElementById(`quiz-opt-${i}`);
+                if (!btn) continue;
+                btn.disabled = true;
+                btn.classList.remove('hover:border-emerald-500', 'hover:bg-emerald-50/50');
+                
+                if (i === q.answer) {
+                    btn.classList.remove('border-slate-200');
+                    btn.classList.add('border-emerald-500', 'bg-emerald-100', 'text-emerald-900');
+                } else if (i === selectedIdx && !isCorrect) {
+                    btn.classList.remove('border-slate-200');
+                    btn.classList.add('border-rose-500', 'bg-rose-100', 'text-rose-900');
+                }
+            }
+
+            if (isCorrect) {
+                quizState.score += 100;
+                document.getElementById('quiz-score').textContent = quizState.score;
+                feedbackEl.className = 'rounded-2xl p-4 mb-4 text-sm bg-emerald-50 border border-emerald-200 text-emerald-900';
+                feedbackEl.innerHTML = `
+                    <div class="font-black text-emerald-700 text-base mb-1"><i class="fa-solid fa-circle-check mr-1"></i> 答對了！成功攻佔領地 (+100 能量)</div>
+                    ${q.explanation ? `<p class="text-xs text-emerald-800 mt-1">${escapeHTML(q.explanation)}</p>` : ''}
+                `;
+            } else {
+                feedbackEl.className = 'rounded-2xl p-4 mb-4 text-sm bg-rose-50 border border-rose-200 text-rose-900';
+                feedbackEl.innerHTML = `
+                    <div class="font-black text-rose-700 text-base mb-1"><i class="fa-solid fa-circle-xmark mr-1"></i> 攻擊失誤！領地防禦成功</div>
+                    ${q.explanation ? `<p class="text-xs text-rose-800 mt-1"><span class="font-bold">詳解：</span>${escapeHTML(q.explanation)}</p>` : ''}
+                `;
+            }
+
+            feedbackEl.classList.remove('hidden');
+            document.getElementById('btn-next-quiz').classList.remove('hidden');
+        }
+
+        function nextQuizStep() {
+            quizState.currentIndex++;
+            quizState.answered = false;
+            renderQuizStep();
+        }
+
+        // ==========================================
+        // 7. 匯出與匯入 Excel / CSV / 純文字功能
+        // ==========================================
+        function getFormattedRows() {
+            // 依照 PaGamO 教師後台匯入格式設計欄位
+            return questions.map((q, idx) => ({
+                '題號': idx + 1,
+                '題目': q.question,
+                '選項A': q.options[0] || '',
+                '選項B': q.options[1] || '',
+                '選項C': q.options[2] || '',
+                '選項D': q.options[3] || '',
+                '正確答案(1-4)': q.answer + 1,
+                '正確答案(A-D)': ['A', 'B', 'C', 'D'][q.answer] || 'A',
+                '詳解': q.explanation || '',
+                '科目標籤': q.tag || '',
+                '難度': q.difficulty || '中等'
+            }));
+        }
+
+        function exportToExcel() {
+            if (questions.length === 0) {
+                showToast('目前沒有題目可以匯出！', 'error');
+                return;
+            }
+            const rows = getFormattedRows();
+            const worksheet = XLSX.utils.json_to_sheet(rows);
+            
+            // 設定欄寬優化閱讀
+            worksheet['!cols'] = [
+                { wch: 6 },  // 題號
+                { wch: 45 }, // 題目
+                { wch: 22 }, // 選項A
+                { wch: 22 }, // 選項B
+                { wch: 22 }, // 選項C
+                { wch: 22 }, // 選項D
+                { wch: 14 }, // 正確答案(1-4)
+                { wch: 14 }, // 正確答案(A-D)
+                { wch: 40 }, // 詳解
+                { wch: 14 }, // 標籤
+                { wch: 10 }  // 難度
+            ];
+
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'PaGamO題庫');
+            
+            const dateStr = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(workbook, `PaGamO_智慧出題庫_${dateStr}.xlsx`);
+            showToast('已成功匯出 PaGamO Excel 檔案！', 'success');
+        }
+
+        function exportToCSV() {
+            if (questions.length === 0) {
+                showToast('目前沒有題目可以匯出！', 'error');
+                return;
+            }
+            const rows = getFormattedRows();
+            const worksheet = XLSX.utils.json_to_sheet(rows);
+            const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
+            
+            // 加入 UTF-8 BOM 確保 Excel 開啟中文不亂碼
+            const blob = new Blob(['\uFEFF' + csvOutput], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const dateStr = new Date().toISOString().slice(0, 10);
+            
+            link.href = url;
+            link.setAttribute('download', `PaGamO_智慧出題庫_${dateStr}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast('已成功匯出 CSV 檔案！', 'success');
+        }
+
+        function copyQuestionsText() {
+            if (questions.length === 0) {
+                showToast('目前沒有題目可以複製！', 'error');
+                return;
+            }
+            const labels = ['A', 'B', 'C', 'D'];
+            const text = questions.map((q, idx) => {
+                const optsStr = q.options
+                    .map((o, i) => o ? `(${labels[i]}) ${o}` : '')
+                    .filter(Boolean)
+                    .join('  ');
+                return `${idx + 1}. ${q.question}\n   ${optsStr}\n   【答案】：${labels[q.answer]}${q.explanation ? `\n   【詳解】：${q.explanation}` : ''}`;
+            }).join('\n\n');
+
+            // 使用 textarea 搭配 execCommand('copy') 確保在各種瀏覽器環境都能正常複製
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast('已將全部題目複製到剪貼簿！', 'success');
+            } catch (err) {
+                showToast('複製失敗，請手動匯出檔案', 'error');
+            }
+            document.body.removeChild(textArea);
+        }
+
+        // 匯入現有 Excel 或 CSV 檔案
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonRows = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (!jsonRows || jsonRows.length === 0) {
+                        showToast('檔案中找不到有效的資料列！', 'error');
+                        return;
+                    }
+
+                    const imported = [];
+                    jsonRows.forEach((row, idx) => {
+                        const qText = row['題目'] || row['Question'] || row['問題'];
+                        if (!qText) return;
+
+                        const optA = String(row['選項A'] || row['OptionA'] || row['選項1'] || '');
+                        const optB = String(row['選項B'] || row['OptionB'] || row['選項2'] || '');
+                        const optC = String(row['選項C'] || row['OptionC'] || row['選項3'] || '');
+                        const optD = String(row['選項D'] || row['OptionD'] || row['選項4'] || '');
+
+                        let rawAns = String(row['正確答案(A-D)'] || row['正確答案(1-4)'] || row['正確答案'] || row['Answer'] || '1').trim().toUpperCase();
+                        let ansIdx = 0;
+                        if (rawAns === 'B' || rawAns === '2') ansIdx = 1;
+                        else if (rawAns === 'C' || rawAns === '3') ansIdx = 2;
+                        else if (rawAns === 'D' || rawAns === '4') ansIdx = 3;
+
+                        imported.push({
+                            id: 'imp-' + Date.now() + '-' + idx,
+                            question: String(qText),
+                            options: [optA, optB, optC, optD],
+                            answer: ansIdx,
+                            explanation: String(row['詳解'] || row['Explanation'] || ''),
+                            tag: String(row['科目標籤'] || row['標籤'] || '匯入題庫'),
+                            difficulty: String(row['難度'] || '中等')
+                        });
+                    });
+
+                    if (imported.length > 0) {
+                        questions = [...imported, ...questions];
+                        saveToStorage();
+                        renderQuestions();
+                        showToast(`成功匯入 ${imported.length} 道題目！`, 'success');
+                    } else {
+                        showToast('無法辨識欄位格式，請確認包含「題目」與「選項A~D」欄位。', 'error');
+                    }
+                } catch (err) {
+                    showToast('讀取檔案失敗，請確認檔案格式是否正確。', 'error');
+                }
+                event.target.value = ''; // 重置 input
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 啟動應用程式
+        window.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
